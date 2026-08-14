@@ -223,9 +223,11 @@ class JetFilmIzle : MainAPI() {
                 // Hotstream / bePlayer kontrolü
                 if (fixedUrl.contains("hotstream.club") || fixedUrl.contains("hupload.pics") || fixedUrl.contains("/embed/")) {
                     try {
-                        val iframeResponse = app.get(fixedUrl, referer = pageUrl, interceptor = interceptor)
+                        val iframeResponse = app.get(fixedUrl, headers = standardHeaders, referer = pageUrl, interceptor = interceptor)
                         val bePlayerRegex = Regex("""bePlayer\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"](\{.+?\})['"]\s*\)""", RegexOption.DOT_MATCHES_ALL)
-                        val match = bePlayerRegex.find(iframeResponse.text)
+                        val bePlayerRegexAlt = Regex("""bePlayer\s*\(\s*['"]([^'"]+)['"]\s*,\s*(\{.+?\})\s*\)""", RegexOption.DOT_MATCHES_ALL)
+                        
+                        val match = bePlayerRegex.find(iframeResponse.text) ?: bePlayerRegexAlt.find(iframeResponse.text)
 
                         if (match != null) {
                             val passB64 = match.groupValues[1]
@@ -238,61 +240,26 @@ class JetFilmIzle : MainAPI() {
                                 val videoLocation = videoObj.videoLocation
 
                                 if (!videoLocation.isNullOrBlank()) {
+                                    val fullVideoLocation = fixUrl(videoLocation)
                                     val m3u8Headers = mapOf(
                                         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                                         "Referer" to fixedUrl,
                                         "X-Requested-With" to "XMLHttpRequest"
                                     )
 
-                                    val m3u8Resp = app.get(videoLocation, headers = m3u8Headers, referer = fixedUrl)
-                                    if (m3u8Resp.text.contains("#EXTM3U")) {
-                                        val m3u8Lines = m3u8Resp.text.lines()
-                                        var directLinkFound = false
-
-                                        for (i in m3u8Lines.indices) {
-                                            val line = m3u8Lines[i].trim()
-                                            if (line.startsWith("#EXT-X-STREAM-INF")) {
-                                                val nextLine = m3u8Lines.getOrNull(i + 1)?.trim()
-                                                if (nextLine != null && nextLine.startsWith("http")) {
-                                                    val quality = if (line.contains("FULLHD") || line.contains("1080")) Qualities.P1080.value
-                                                                  else if (line.contains("720")) Qualities.P720.value
-                                                                  else if (line.contains("480")) Qualities.P480.value
-                                                                  else Qualities.Unknown.value
-
-                                                    callback(
-                                                        newExtractorLink(
-                                                            source = "JetFilm",
-                                                            name = "JetFilm ($langLabel)",
-                                                            url = nextLine,
-                                                            type = ExtractorLinkType.M3U8
-                                                        ) {
-                                                            this.referer = fixedUrl
-                                                            this.headers = m3u8Headers
-                                                            this.quality = quality
-                                                        }
-                                                    )
-                                                    directLinkFound = true
-                                                    foundAny = true
-                                                }
-                                            }
+                                    callback(
+                                        newExtractorLink(
+                                            source = "JetFilm",
+                                            name = "JetFilm ($langLabel)",
+                                            url = fullVideoLocation,
+                                            type = ExtractorLinkType.M3U8
+                                        ) {
+                                            this.referer = fixedUrl
+                                            this.headers = m3u8Headers
+                                            this.quality = Qualities.P1080.value
                                         }
-
-                                        if (!directLinkFound) {
-                                            callback(
-                                                newExtractorLink(
-                                                    source = "JetFilm",
-                                                    name = "JetFilm ($langLabel)",
-                                                    url = videoLocation,
-                                                    type = ExtractorLinkType.M3U8
-                                                ) {
-                                                    this.referer = fixedUrl
-                                                    this.headers = m3u8Headers
-                                                    this.quality = Qualities.P1080.value
-                                                }
-                                            )
-                                            foundAny = true
-                                        }
-                                    }
+                                    )
+                                    foundAny = true
                                 }
                             }
                         }
@@ -313,26 +280,31 @@ class JetFilmIzle : MainAPI() {
     private fun decryptBePlayer(passB64: String, payload: CryptoPayload): String? {
         try {
             val salt = hexToBytes(payload.s)
-            val iv = hexToBytes(payload.iv)
+            val jsonIv = hexToBytes(payload.iv)
             val cleanCt = payload.ct.replace("\\/", "/").trim()
             val ct = Base64.decode(cleanCt, Base64.DEFAULT)
 
             val passCandidates = listOf(
                 passB64.toByteArray(Charsets.UTF_8),
-                Base64.decode(passB64, Base64.DEFAULT)
-            )
+                try { Base64.decode(passB64, Base64.DEFAULT) } catch (_: Exception) { ByteArray(0) }
+            ).filter { it.isNotEmpty() }
 
             for (pass in passCandidates) {
-                try {
-                    val derivedKey = evpBytesToKey(pass, salt, 32, 16)
-                    val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-                    cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(derivedKey, "AES"), IvParameterSpec(iv))
-                    val decryptedBytes = cipher.doFinal(ct)
-                    val result = String(decryptedBytes, Charsets.UTF_8)
-                    if (result.contains("video_location")) {
-                        return result
-                    }
-                } catch (_: Exception) {}
+                val derived = evpBytesToKeyFull(pass, salt, 32, 16)
+                val derivedKey = derived.first
+                val derivedIv = derived.second
+
+                for (testIv in listOf(jsonIv, derivedIv)) {
+                    try {
+                        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+                        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(derivedKey, "AES"), IvParameterSpec(testIv))
+                        val decryptedBytes = cipher.doFinal(ct)
+                        val result = String(decryptedBytes, Charsets.UTF_8)
+                        if (result.contains("video_location")) {
+                            return result
+                        }
+                    } catch (_: Exception) {}
+                }
             }
         } catch (e: Exception) {
             Log.e("JetFilm", "AES decrypt error: ${e.message}")
@@ -340,7 +312,7 @@ class JetFilmIzle : MainAPI() {
         return null
     }
 
-    private fun evpBytesToKey(password: ByteArray, salt: ByteArray, keyLen: Int, ivLen: Int): ByteArray {
+    private fun evpBytesToKeyFull(password: ByteArray, salt: ByteArray, keyLen: Int, ivLen: Int): Pair<ByteArray, ByteArray> {
         val md = MessageDigest.getInstance("MD5")
         var dtot = ByteArray(0)
         var d = ByteArray(0)
@@ -358,8 +330,10 @@ class JetFilmIzle : MainAPI() {
             dtot = newDtot
         }
         val key = ByteArray(keyLen)
+        val iv = ByteArray(ivLen)
         System.arraycopy(dtot, 0, key, 0, keyLen)
-        return key
+        System.arraycopy(dtot, keyLen, iv, 0, ivLen)
+        return Pair(key, iv)
     }
 
     private fun hexToBytes(hex: String): ByteArray {
