@@ -38,9 +38,11 @@ class HDFilmCehennemi : MainAPI() {
         override fun intercept(chain: Interceptor.Chain): Response {
             val request  = chain.request()
             val response = chain.proceed(request)
-            val doc      = Jsoup.parse(response.peekBody(1024 * 1024).string())
-
-            if (doc.text().contains("Just a moment")) {
+            if (response.code in listOf(403, 503)) {
+                return cloudflareKiller.intercept(chain)
+            }
+            val bodyString = response.peekBody(1024 * 1024).string()
+            if (bodyString.contains("Just a moment") || bodyString.contains("challenges.cloudflare.com")) {
                 return cloudflareKiller.intercept(chain)
             }
 
@@ -56,9 +58,7 @@ class HDFilmCehennemi : MainAPI() {
 
     // Standard headers for requests
     private val standardHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:137.0) Gecko/20100101 Firefox/137.0",
-        "Accept" to "*/*",
-        "X-Requested-With" to "fetch"
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     )
 
     // Ana sayfa kategorilerini tanımlıyoruz
@@ -164,31 +164,38 @@ class HDFilmCehennemi : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val response = app.get(
-            "${mainUrl}/search?q=${query}",
-            headers = mapOf("X-Requested-With" to "fetch"),
-            referer = "${mainUrl}/",
-            interceptor = interceptor
-        ).parsedSafe<Results>() ?: return emptyList()
-
         val searchResults = mutableListOf<SearchResponse>()
-
-        response.results.forEach { resultHtml ->
-            val document = Jsoup.parse(resultHtml)
-
-            val title     = document.selectFirst("h4.title")?.text() ?: return@forEach
-            val href      = fixUrlNull(document.selectFirst("a")?.attr("href")) ?: return@forEach
-            val posterUrl = fixUrlNull(document.selectFirst("img")?.attr("src")) ?:
-            fixUrlNull(document.selectFirst("img")?.attr("data-src"))
-
-            searchResults.add(
-                newMovieSearchResponse(title, href, TvType.Movie) {
-                    this.posterUrl = posterUrl?.replace("/thumb/", "/list/")
-                }
+        try {
+            val response = app.get(
+                "${mainUrl}/search?q=${query}",
+                headers = mapOf("X-Requested-With" to "fetch"),
+                referer = "${mainUrl}/",
+                interceptor = interceptor
             )
-        }
+            if (response.text.trim().startsWith("{")) {
+                val resultsJson: Results = objectMapper.readValue(response.text)
+                resultsJson.results.forEach { resultHtml ->
+                    val document = Jsoup.parse(resultHtml)
+                    val title = document.selectFirst("h4.title, .title, a")?.text()?.trim() ?: return@forEach
+                    val href = fixUrlNull(document.selectFirst("a")?.attr("href")) ?: return@forEach
+                    val posterUrl = fixUrlNull(document.selectFirst("img")?.attr("src"))
+                        ?: fixUrlNull(document.selectFirst("img")?.attr("data-src"))
 
-        return searchResults
+                    searchResults.add(
+                        newMovieSearchResponse(title.replace(" izle", "").trim(), href, TvType.Movie) {
+                            this.posterUrl = posterUrl?.replace("/thumb/", "/list/")
+                        }
+                    )
+                }
+            } else {
+                val document = response.document
+                val items = document.select("div.poster, div.movie-card, div.section-content a, div.content a, a.poster")
+                items.mapNotNull { it.toSearchResult() }.forEach { searchResults.add(it) }
+            }
+        } catch (e: Exception) {
+            Log.e("HDCH", "Search error: ${e.message}")
+        }
+        return searchResults.distinctBy { it.url }
     }
 
     override suspend fun load(url: String): LoadResponse? {
