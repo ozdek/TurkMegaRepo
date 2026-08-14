@@ -2,7 +2,7 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/HDFilmCehennemi.cs3",
         "status": 1,
-        "version": 10,
+        "version": 11,
         "name": "HDFilmCehennemi",
         "internalName": "HDFilmCehennemi",
         "authors": [
@@ -23,7 +23,7 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/TurkMegaSaglayici.cs3",
         "status": 1,
-        "version": 2,
+        "version": 1,
         "name": "TurkMegaSaglayici",
         "internalName": "TurkMegaSaglayici",
         "authors": [],
@@ -37,7 +37,7 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/CizgiveDizi.cs3",
         "status": 1,
-        "version": 1,
+        "version": 4,
         "name": "CizgiveDizi",
         "internalName": "CizgiveDizi",
         "authors": [
@@ -69,7 +69,7 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/DiziAsia.cs3",
         "status": 1,
-        "version": 1,
+        "version": 2,
         "name": "DiziAsia",
         "internalName": "DiziAsia",
         "authors": [
@@ -85,7 +85,7 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/Dizican.cs3",
         "status": 1,
-        "version": 1,
+        "version": 2,
         "name": "Dizican",
         "internalName": "Dizican",
         "authors": [
@@ -101,7 +101,7 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/FilmBip.cs3",
         "status": 1,
-        "version": 1,
+        "version": 2,
         "name": "FilmBip",
         "internalName": "FilmBip",
         "authors": [
@@ -117,7 +117,7 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/KickTR.cs3",
         "status": 1,
-        "version": 1,
+        "version": 2,
         "name": "KickTR",
         "internalName": "KickTR",
         "authors": [
@@ -165,7 +165,7 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/YeniWatch.cs3",
         "status": 1,
-        "version": 1,
+        "version": 4,
         "name": "YeniWatch",
         "internalName": "YeniWatch",
         "authors": [
