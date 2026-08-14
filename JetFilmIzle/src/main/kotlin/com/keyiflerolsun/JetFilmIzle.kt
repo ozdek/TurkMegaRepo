@@ -1,14 +1,23 @@
 package com.keyiflerolsun
 
+import android.util.Base64
 import android.util.Log
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.fasterxml.jackson.module.kotlin.readValue
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import okhttp3.Interceptor
 import okhttp3.Response
-import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import java.security.MessageDigest
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class JetFilmIzle : MainAPI() {
     override var mainUrl              = "https://jetizle.com"
@@ -24,6 +33,11 @@ class JetFilmIzle : MainAPI() {
 
     private val cloudflareKiller by lazy { CloudflareKiller() }
     private val interceptor      by lazy { CloudflareInterceptor(cloudflareKiller) }
+
+    private val objectMapper = ObjectMapper().apply {
+        registerModule(KotlinModule.Builder().build())
+        configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+    }
 
     class CloudflareInterceptor(private val cloudflareKiller: CloudflareKiller): Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
@@ -149,6 +163,18 @@ class JetFilmIzle : MainAPI() {
         }
     }
 
+    private data class CryptoPayload(
+        @JsonProperty("ct") val ct: String,
+        @JsonProperty("iv") val iv: String,
+        @JsonProperty("s")  val s: String
+    )
+
+    private data class DecryptedVideo(
+        @JsonProperty("video_location") val videoLocation: String?,
+        @JsonProperty("title")          val title: String?,
+        @JsonProperty("referer")        val referer: String?
+    )
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -156,28 +182,152 @@ class JetFilmIzle : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data, headers = standardHeaders, referer = mainUrl, interceptor = interceptor).document
-
-        val iframes = document.select("div.filmalani iframe, div.video-container iframe, div.video iframe, iframe")
         var foundAny = false
 
-        for (iframe in iframes) {
-            val src = iframe.attr("data-litespeed-src").ifEmpty {
-                iframe.attr("data-src").ifEmpty {
-                    iframe.attr("src")
+        // Hem ana sayfadaki hem de alt sayfalardaki (örn. /2/ - Altyazılı) kaynakları tara
+        val pagesToScan = mutableListOf(data)
+        document.select(".filmplus_sources a.post-page-numbers, .sources a").forEach { a ->
+            val subUrl = fixUrlNull(a.attr("href"))
+            if (subUrl != null && !pagesToScan.contains(subUrl)) {
+                pagesToScan.add(subUrl)
+            }
+        }
+
+        for (pageUrl in pagesToScan) {
+            val pageDoc = if (pageUrl == data) document else app.get(pageUrl, headers = standardHeaders, referer = mainUrl, interceptor = interceptor).document
+            val langLabel = if (pageUrl.endsWith("/2/") || pageUrl.contains("altyazi")) "Türkçe Altyazılı" else "Türkçe Dublaj"
+
+            val iframes = pageDoc.select("div.filmalani iframe, div.video-container iframe, div.video iframe, iframe")
+            for (iframe in iframes) {
+                val src = iframe.attr("data-litespeed-src").ifEmpty {
+                    iframe.attr("data-src").ifEmpty {
+                        iframe.attr("src")
+                    }
                 }
+
+                if (src.isBlank() || src == "about:blank" || src.contains("facebook.com") || src.contains("twitter.com")) {
+                    continue
+                }
+
+                val fixedUrl = fixUrl(src)
+                Log.d("JetFilm", "Iframe inceleniyor ($langLabel): $fixedUrl")
+
+                // Hotstream / bePlayer kontrolü
+                if (fixedUrl.contains("hotstream.club") || fixedUrl.contains("hupload.pics") || fixedUrl.contains("/embed/")) {
+                    try {
+                        val iframeResponse = app.get(fixedUrl, referer = pageUrl, interceptor = interceptor)
+                        val bePlayerRegex = Regex("""bePlayer\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"](\{.+?\})['"]\s*\)""")
+                        val match = bePlayerRegex.find(iframeResponse.text)
+
+                        if (match != null) {
+                            val passB64 = match.groupValues[1]
+                            val jsonStr = match.groupValues[2]
+                            val payload: CryptoPayload = objectMapper.readValue(jsonStr)
+
+                            val decryptedJson = decryptBePlayer(passB64, payload)
+                            if (decryptedJson != null) {
+                                val videoObj: DecryptedVideo = objectMapper.readValue(decryptedJson)
+                                val videoLocation = videoObj.videoLocation
+
+                                if (!videoLocation.isNullOrBlank()) {
+                                    val m3u8Headers = mapOf(
+                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                        "Referer" to fixedUrl,
+                                        "X-Requested-With" to "XMLHttpRequest"
+                                    )
+
+                                    val m3u8Resp = app.get(videoLocation, headers = m3u8Headers, referer = fixedUrl)
+                                    if (m3u8Resp.text.contains("#EXTM3U")) {
+                                        callback(
+                                            newExtractorLink(
+                                                source = "JetFilm",
+                                                name = "JetFilm ($langLabel)",
+                                                url = videoLocation,
+                                                type = ExtractorLinkType.M3U8
+                                            ) {
+                                                this.referer = fixedUrl
+                                                this.headers = m3u8Headers
+                                                this.quality = Qualities.P1080.value
+                                            }
+                                        )
+                                        foundAny = true
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("JetFilm", "bePlayer ayrıştırma hatası: ${e.message}")
+                    }
+                }
+
+                // Standart CloudStream extractor'larına ilet (Vidmoly, Streamtape vb.)
+                loadExtractor(fixedUrl, pageUrl, subtitleCallback, callback)
+                foundAny = true
             }
-
-            if (src.isBlank() || src == "about:blank" || src.contains("facebook.com") || src.contains("twitter.com")) {
-                continue
-            }
-
-            val fixedUrl = fixUrl(src)
-            Log.d("JetFilm", "Extractor iframe bulundu: $fixedUrl")
-
-            loadExtractor(fixedUrl, data, subtitleCallback, callback)
-            foundAny = true
         }
 
         return foundAny
+    }
+
+    private fun decryptBePlayer(passB64: String, payload: CryptoPayload): String? {
+        try {
+            val salt = hexToBytes(payload.s)
+            val iv = hexToBytes(payload.iv)
+            val ct = Base64.decode(payload.ct, Base64.DEFAULT)
+
+            val passCandidates = listOf(
+                passB64.toByteArray(Charsets.UTF_8),
+                Base64.decode(passB64, Base64.DEFAULT)
+            )
+
+            for (pass in passCandidates) {
+                try {
+                    val derivedKey = evpBytesToKey(pass, salt, 32, 16)
+                    val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+                    cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(derivedKey, "AES"), IvParameterSpec(iv))
+                    val decryptedBytes = cipher.doFinal(ct)
+                    val result = String(decryptedBytes, Charsets.UTF_8)
+                    if (result.contains("video_location")) {
+                        return result
+                    }
+                } catch (_: Exception) {}
+            }
+        } catch (e: Exception) {
+            Log.e("JetFilm", "AES decrypt error: ${e.message}")
+        }
+        return null
+    }
+
+    private fun evpBytesToKey(password: ByteArray, salt: ByteArray, keyLen: Int, ivLen: Int): ByteArray {
+        val md = MessageDigest.getInstance("MD5")
+        var dtot = ByteArray(0)
+        var d = ByteArray(0)
+        while (dtot.size < (keyLen + ivLen)) {
+            md.reset()
+            if (d.isNotEmpty()) {
+                md.update(d)
+            }
+            md.update(password)
+            md.update(salt)
+            d = md.digest()
+            val newDtot = ByteArray(dtot.size + d.size)
+            System.arraycopy(dtot, 0, newDtot, 0, dtot.size)
+            System.arraycopy(d, 0, newDtot, dtot.size, d.size)
+            dtot = newDtot
+        }
+        val key = ByteArray(keyLen)
+        System.arraycopy(dtot, 0, key, 0, keyLen)
+        return key
+    }
+
+    private fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
     }
 }
