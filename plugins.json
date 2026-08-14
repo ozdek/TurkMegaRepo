@@ -2,14 +2,14 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/HDFilmCehennemi.cs3",
         "status": 1,
-        "version": 12,
+        "version": 13,
         "name": "HDFilmCehennemi",
         "internalName": "HDFilmCehennemi",
         "authors": [
             "kerimmkirac"
         ],
         "description": "Türkiye'nin en hızlı hd film izleme sitesi",
-        "fileSize": 29284,
+        "fileSize": 30130,
         "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
         "language": "tr",
         "apiVersion": 1,
@@ -18,7 +18,7 @@
             "TvSeries"
         ],
         "iconUrl": "https://www.google.com/s2/favicons?domain=hdfilmcehennemi.nl&sz=64",
-        "fileHash": "sha256-aadb8bcee7dc4b218dc2955d6ccde0b4ede8170f3f76e5660a603d5c9fb39f05"
+        "fileHash": "sha256-04ff48aee5d2d69f88fd6cd7f4aad598d5f68d13b68c8c3c98193e5f25e8f494"
     },
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/TurkMegaSaglayici.cs3",
