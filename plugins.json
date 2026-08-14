@@ -9,7 +9,7 @@
             "kerimmkirac"
         ],
         "description": "Türkiye'nin en hızlı hd film izleme sitesi",
-        "fileSize": 30392,
+        "fileSize": 29553,
         "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
         "language": "tr",
         "apiVersion": 1,
@@ -18,7 +18,7 @@
             "TvSeries"
         ],
         "iconUrl": "https://www.google.com/s2/favicons?domain=hdfilmcehennemi.nl&sz=64",
-        "fileHash": "sha256-d56ceb0b8015ed4f6be5e00ae945ee8438bcf357758f59ef6c16570696d44d69"
+        "fileHash": "sha256-3487b1ce9e08963275ea827c8ce93f8e3ce69c971466b630e8da15a2b235899d"
     },
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/TurkMegaSaglayici.cs3",
