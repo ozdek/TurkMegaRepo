@@ -181,17 +181,17 @@
     {
         "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/JetFilmIzle.cs3",
         "status": 1,
-        "version": 4,
+        "version": 5,
         "name": "JetFilmIzle",
         "internalName": "JetFilmIzle",
         "authors": [
             "ozdek"
         ],
         "description": "JetFilmIzle CloudStream eklentisi",
-        "fileSize": 22795,
+        "fileSize": 26723,
         "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
         "language": "tr",
         "apiVersion": 1,
-        "fileHash": "sha256-2d567992ab477971c49c77ec5307aea9bde50526b0047d033382693d697f38b0"
+        "fileHash": "sha256-472b53e8bed6a2ce1ee80de8fd3653f0cf133843e9570a5873ea3163e8f692ae"
     }
 ]
