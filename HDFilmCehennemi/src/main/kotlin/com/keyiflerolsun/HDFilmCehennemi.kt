@@ -63,12 +63,13 @@ class HDFilmCehennemi : MainAPI() {
 
     // Ana sayfa kategorilerini tanımlıyoruz
     override val mainPage = mainPageOf(
-        "${mainUrl}/load/page/1/home/"                        to "Yeni Eklenen Filmler",
+        "${mainUrl}/load/page/1/home/"                                    to "Yeni Eklenen Filmler",
         "${mainUrl}/load/page/1/categories/nette-ilk-filmler/"            to "Nette İlk Filmler",
         "${mainUrl}/load/page/1/home-series/"                             to "Yeni Eklenen Diziler",
         "${mainUrl}/load/page/1/categories/tavsiye-filmler-izle2/"        to "Tavsiye Filmler",
-        "${mainUrl}/load/page/1/imdb7/"                                   to "IMDB 7+ Filmler",
         "${mainUrl}/load/page/1/mostLiked/"                               to "En Çok Beğenilenler",
+        "${mainUrl}/load/page/1/mostCommented/"                           to "En Çok Yorumlananlar",
+        "${mainUrl}/load/page/1/imdb7/"                                   to "IMDB 7+ Filmler",
         "${mainUrl}/load/page/1/genres/aile-filmleri-izleyin-6/"          to "Aile Filmleri",
         "${mainUrl}/load/page/1/genres/aksiyon-filmleri-izleyin-5/"       to "Aksiyon Filmleri",
         "${mainUrl}/load/page/1/genres/animasyon-filmlerini-izleyin-5/"   to "Animasyon Filmleri",
@@ -83,12 +84,13 @@ class HDFilmCehennemi : MainAPI() {
         // URL'deki sayfa numarasını güncelle
         val url = if (page == 1) {
             request.data
-                .replace("/load/page/1/genres/","/tur/")
-                .replace("/load/page/1/categories/","/category/")
-                .replace("/load/page/1/imdb7/","/imdb-7-puan-uzeri-filmler/")
+                .replace("/load/page/1/genres/", "/tur/")
+                .replace("/load/page/1/categories/", "/category/")
+                .replace("/load/page/1/imdb7/", "/imdb-7-puan-uzeri-filmler/")
+                .replace("/load/page/1/mostLiked/", "/en-cok-begenilen-filmleri-izle-4/")
+                .replace("/load/page/1/mostCommented/", "/en-cok-yorumlananlar-2/")
         } else {
-            request.data
-                .replace("/page/1/", "/page/${page}/")
+            request.data.replace("/page/1/", "/page/${page}/")
         }
 
         // API isteği gönder
@@ -101,9 +103,13 @@ class HDFilmCehennemi : MainAPI() {
         }
 
         try {
-            // JSON yanıtını parse et
-            val hdfc: HDFC = objectMapper.readValue(response.text)
-            val document = Jsoup.parse(hdfc.html)
+            // Hem AJAX JSON ({ "html": "..." }) hem de düz HTML yanıtlarını destekle
+            val document = if (response.text.trim().startsWith("{")) {
+                val hdfc: HDFC = objectMapper.readValue(response.text)
+                Jsoup.parse(hdfc.html)
+            } else {
+                response.document
+            }
 
             Log.d("HDCH", "Kategori ${request.name} için ${document.select("a").size} sonuç bulundu")
 
@@ -112,7 +118,7 @@ class HDFilmCehennemi : MainAPI() {
 
             return newHomePageResponse(request.name, results)
         } catch (e: Exception) {
-            Log.e("HDCH", "JSON parse hatası (${request.name}): ${e.message}")
+            Log.e("HDCH", "Parse hatası (${request.name}): ${e.message}")
             return newHomePageResponse(request.name, emptyList())
         }
     }
@@ -130,10 +136,10 @@ class HDFilmCehennemi : MainAPI() {
                 || it?.contains("Marvel Yapımları", ignoreCase = true) == true
                 || it?.contains("Amazon Yapımları", ignoreCase = true) == true
                 || it?.contains("1080p Film izle", ignoreCase = true) == true
-            } ?: return null
+            } ?: this.selectFirst(".title, h4, h3, h2")?.text()?.takeIf { it.isNotEmpty() } ?: return null
 
         val href      = fixUrlNull(this.attr("href")) ?: return null
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("data-src"))
+        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("data-src")) ?: fixUrlNull(this.selectFirst("img")?.attr("src"))
 
         return newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = posterUrl }
     }
@@ -177,7 +183,7 @@ class HDFilmCehennemi : MainAPI() {
         val year        = document.selectFirst("div.post-info-year-country a")?.text()?.trim()?.toIntOrNull()
         val tvType      = if (document.select("div.seasons").isEmpty()) TvType.Movie else TvType.TvSeries
         val description = document.selectFirst("article.post-info-content > p")?.text()?.trim()
-        val rating      = document.selectFirst("div.post-info-imdb-rating span")?.text()?.substringBefore("(")?.trim()?.toRatingInt()
+        val rating      = document.selectFirst("div.post-info-imdb-rating span")?.text()?.substringBefore("(")?.trim()?.toDoubleOrNull()
         val actors      = document.select("div.post-info-cast a").map {
             Actor(it.selectFirst("strong")!!.text(), it.select("img").attr("data-src"))
         }
@@ -214,7 +220,7 @@ class HDFilmCehennemi : MainAPI() {
                 this.year            = year
                 this.plot            = description
                 this.tags            = tags
-                this.rating          = rating
+                this.score           = Score.from10(rating)
                 this.recommendations = recommendations
                 addActors(actors)
                 addTrailer(trailer)
@@ -228,7 +234,7 @@ class HDFilmCehennemi : MainAPI() {
                 this.year            = year
                 this.plot            = description
                 this.tags            = tags
-                this.rating          = rating
+                this.score           = Score.from10(rating)
                 this.recommendations = recommendations
                 addActors(actors)
                 addTrailer(trailer)
@@ -342,7 +348,9 @@ class HDFilmCehennemi : MainAPI() {
                 ).text
 
 
-                var iframe = Regex("""data-src=\\"([^"]+)""").find(apiGet)?.groupValues?.get(1)!!.replace("\\", "")
+                var iframe = Regex("""data-src=\\"([^"]+)""").find(apiGet)?.groupValues?.get(1)?.replace("\\", "")
+                    ?: Regex("""data-src="([^"]+)"""").find(apiGet)?.groupValues?.get(1)
+                    ?: return@forEach
 
                 Log.d("kraptor_$name", "iframe mi $iframe")
 
@@ -350,11 +358,11 @@ class HDFilmCehennemi : MainAPI() {
 
                 val evalRegex = Regex("""eval\((.*?\\.*?\\.*?\\.*?\{\}\)\))""", RegexOption.DOT_MATCHES_ALL)
                 val packedCode = evalRegex.find(iframeGet)?.value
-                val unpackedJs = JsUnpacker(packedCode).unpack().toString()
+                val unpackedJs = if (packedCode != null) JsUnpacker(packedCode).unpack().toString() else iframeGet
 
                 val regex = Regex("""dc_hello\("([^"]+)"\)""")
                 val match = regex.find(unpackedJs)
-                val base64String = match?.groupValues[1].toString()
+                val base64String = match?.groupValues?.get(1) ?: return@forEach
                 Log.d("kraptor_$name", "base64String $base64String")
                 val realUrl = dcHello(base64String)
                 Log.d("kraptor_$name", "realUrl $realUrl")
@@ -380,16 +388,17 @@ class HDFilmCehennemi : MainAPI() {
                 }
 
                 Log.d("kraptor_$name", "$source » $videoID » $iframe")
-                callback.invoke(newExtractorLink(
-                    source = videoIsim,
-                    name = videoIsim,
-                    url = realUrl,
-                    type = ExtractorLinkType.M3U8,
-                    {
+                callback.invoke(
+                    newExtractorLink(
+                        source = videoIsim,
+                        name = videoIsim,
+                        url = realUrl,
+                        type = ExtractorLinkType.M3U8
+                    ) {
                         this.referer = referer
                         this.quality = Qualities.Unknown.value
                     }
-                ))
+                )
             }
         }
 
@@ -413,6 +422,14 @@ class HDFilmCehennemi : MainAPI() {
     )
 }
 
+fun base64Decode(encoded: String): String {
+    return try {
+        String(Base64.decode(encoded.trim(), Base64.DEFAULT), Charsets.UTF_8)
+    } catch (e: Exception) {
+        ""
+    }
+}
+
 fun dcHello(encoded: String): String {
     // İlk Base64 çöz
     val firstDecoded = base64Decode(encoded)
@@ -434,5 +451,4 @@ fun dcHello(encoded: String): String {
     }
     Log.d("kraptor_hdfilmcehennemi", "secondDecoded $secondDecoded")
     return gercekLink
-
 }
