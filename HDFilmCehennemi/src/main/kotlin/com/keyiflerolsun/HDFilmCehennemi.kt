@@ -84,6 +84,8 @@ class HDFilmCehennemi : MainAPI() {
         // URL'deki sayfa numarasını güncelle
         val url = if (page == 1) {
             request.data
+                .replace("/load/page/1/home-series/", "/dizi-izle/")
+                .replace("/load/page/1/home/", "/")
                 .replace("/load/page/1/genres/", "/tur/")
                 .replace("/load/page/1/categories/", "/category/")
                 .replace("/load/page/1/imdb7/", "/imdb-7-puan-uzeri-filmler/")
@@ -94,7 +96,7 @@ class HDFilmCehennemi : MainAPI() {
         }
 
         // API isteği gönder
-        val response = app.get(url, headers = standardHeaders, referer = mainUrl)
+        val response = app.get(url, headers = standardHeaders, referer = mainUrl, interceptor = interceptor)
 
         // Yanıt başarılı değilse boş liste döndür
         if (response.text.contains("Sayfa Bulunamadı")) {
@@ -111,10 +113,11 @@ class HDFilmCehennemi : MainAPI() {
                 response.document
             }
 
-            Log.d("HDCH", "Kategori ${request.name} için ${document.select("a").size} sonuç bulundu")
-
             // Film/dizi kartlarını SearchResponse listesine dönüştür
-            val results = document.select("a").mapNotNull { it.toSearchResult() }
+            val elements = document.select("div.poster, div.film-card, div.movie-card, div.section-content a, div.content a, a")
+            val results = elements.mapNotNull { it.toSearchResult() }.distinctBy { it.url }
+
+            Log.d("HDCH", "Kategori ${request.name} için ${results.size} sonuç bulundu")
 
             return newHomePageResponse(request.name, results)
         } catch (e: Exception) {
@@ -124,24 +127,38 @@ class HDFilmCehennemi : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val title = this.attr("title")
-            .takeIf { it.isNotEmpty() }
-            .takeUnless {
-                it?.contains("Seri Filmler", ignoreCase = true) == true
-                || it?.contains("Japonya Filmleri", ignoreCase = true) == true
-                || it?.contains("Kore Filmleri", ignoreCase = true) == true
-                || it?.contains("Hint Filmleri", ignoreCase = true) == true
-                || it?.contains("Türk Filmleri", ignoreCase = true) == true
-                || it?.contains("DC Yapımları", ignoreCase = true) == true
-                || it?.contains("Marvel Yapımları", ignoreCase = true) == true
-                || it?.contains("Amazon Yapımları", ignoreCase = true) == true
-                || it?.contains("1080p Film izle", ignoreCase = true) == true
-            } ?: this.selectFirst(".title, h4, h3, h2")?.text()?.takeIf { it.isNotEmpty() } ?: return null
+        val title = this.selectFirst(".title, .poster-title, h4, h3, h2")?.text()?.trim()
+            ?: this.attr("title").trim().takeIf { it.isNotEmpty() }
+            ?: return null
 
-        val href      = fixUrlNull(this.attr("href")) ?: return null
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("data-src")) ?: fixUrlNull(this.selectFirst("img")?.attr("src"))
+        if (title.contains("Seri Filmler", ignoreCase = true) ||
+            title.contains("Japonya Filmleri", ignoreCase = true) ||
+            title.contains("Kore Filmleri", ignoreCase = true) ||
+            title.contains("Hint Filmleri", ignoreCase = true) ||
+            title.contains("Türk Filmleri", ignoreCase = true) ||
+            title.contains("DC Yapımları", ignoreCase = true) ||
+            title.contains("Marvel Yapımları", ignoreCase = true) ||
+            title.contains("Amazon Yapımları", ignoreCase = true) ||
+            title.contains("1080p Film izle", ignoreCase = true)) {
+            return null
+        }
 
-        return newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = posterUrl }
+        val href = fixUrlNull(this.selectFirst("a")?.attr("href"))
+            ?: fixUrlNull(this.attr("href"))
+            ?: return null
+
+        if (href == mainUrl || href == "$mainUrl/" || href.contains("/tur/") || href.contains("/category/") || href.contains("/load/")) {
+            return null
+        }
+
+        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("data-src"))
+            ?: fixUrlNull(this.selectFirst("img")?.attr("src"))
+
+        val cleanTitle = title.substringBefore(" izle").trim()
+
+        return newMovieSearchResponse(cleanTitle, href, TvType.Movie) {
+            this.posterUrl = posterUrl
+        }
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
@@ -149,7 +166,9 @@ class HDFilmCehennemi : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val response = app.get(
             "${mainUrl}/search?q=${query}",
-            headers = mapOf("X-Requested-With" to "fetch")
+            headers = mapOf("X-Requested-With" to "fetch"),
+            referer = "${mainUrl}/",
+            interceptor = interceptor
         ).parsedSafe<Results>() ?: return emptyList()
 
         val searchResults = mutableListOf<SearchResponse>()
@@ -173,7 +192,7 @@ class HDFilmCehennemi : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url).document
+        val document = app.get(url, headers = standardHeaders, referer = mainUrl, interceptor = interceptor).document
 
 
 
@@ -280,7 +299,7 @@ class HDFilmCehennemi : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         Log.d("kraptor_$name","data = $data")
-        val document = app.get(data).document
+        val document = app.get(data, headers = standardHeaders, referer = mainUrl, interceptor = interceptor).document
         val iframealak = fixUrlNull(
             document.selectFirst(".close")?.attr("data-src")
                 ?: document.selectFirst(".rapidrame")?.attr("data-src")
@@ -289,7 +308,7 @@ class HDFilmCehennemi : MainAPI() {
 
         // Process hdfilmcehennemi.mobi subtitles
         if (iframealak.contains("hdfilmcehennemi.mobi")) {
-            val iframedoc = app.get(iframealak, referer = mainUrl).document
+            val iframedoc = app.get(iframealak, referer = mainUrl, interceptor = interceptor).document
             val baseUri = iframedoc.location().substringBefore("/", "https://www.hdfilmcehennemi.mobi")
 
             iframedoc.select("track[kind=captions]")
@@ -310,7 +329,7 @@ class HDFilmCehennemi : MainAPI() {
                     subtitleCallback(SubtitleFile(lang, subUrl))
                 }
         } else if (iframealak.contains("rplayer")) {
-            val iframeDoc = app.get(iframealak, referer = "$data/").document
+            val iframeDoc = app.get(iframealak, referer = "$data/", interceptor = interceptor).document
 //            Log.d("kraptor_$name","iframeDoc = $iframeDoc")
             val regex = Regex("\"file\":\"((?:[^\"]|\"\")*)\"", options = setOf(RegexOption.IGNORE_CASE))
             val matches = regex.findAll(iframeDoc.toString())
@@ -344,7 +363,8 @@ class HDFilmCehennemi : MainAPI() {
                         "Content-Type"     to "application/json",
                         "X-Requested-With" to "fetch"
                     ),
-                    referer = data
+                    referer = data,
+                    interceptor = interceptor
                 ).text
 
 
@@ -354,7 +374,7 @@ class HDFilmCehennemi : MainAPI() {
 
                 Log.d("kraptor_$name", "iframe mi $iframe")
 
-                val iframeGet = app.get(iframe, referer = "${mainUrl}/").text
+                val iframeGet = app.get(iframe, referer = "${mainUrl}/", interceptor = interceptor).text
 
                 val evalRegex = Regex("""eval\((.*?\\.*?\\.*?\\.*?\{\}\)\))""", RegexOption.DOT_MATCHES_ALL)
                 val packedCode = evalRegex.find(iframeGet)?.value
