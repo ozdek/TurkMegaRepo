@@ -9,6 +9,7 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import okhttp3.Interceptor
@@ -150,6 +151,11 @@ class JetFilmIzle : MainAPI() {
             Actor(it.text().trim())
         }
 
+        val trailer = document.selectFirst("iframe[src*='youtube'], iframe[data-litespeed-src*='youtube'], iframe[data-src*='youtube']")?.let {
+            val src = it.attr("data-litespeed-src").ifEmpty { it.attr("data-src").ifEmpty { it.attr("src") } }
+            fixUrlNull(src)
+        }
+
         val recommendations = document.select("div.owl-carousel div.listmovie div.movie-box").mapNotNull {
             it.toSearchResult()
         }
@@ -160,6 +166,7 @@ class JetFilmIzle : MainAPI() {
             this.tags            = tags
             this.recommendations = recommendations
             addActors(actors)
+            addTrailer(trailer)
         }
     }
 
@@ -205,7 +212,8 @@ class JetFilmIzle : MainAPI() {
                     }
                 }
 
-                if (src.isBlank() || src == "about:blank" || src.contains("facebook.com") || src.contains("twitter.com")) {
+                // Sosyal medya ve YouTube fragman iframe'lerini film kaynağı olarak yükleme
+                if (src.isBlank() || src == "about:blank" || src.contains("facebook.com") || src.contains("twitter.com") || src.contains("youtube.com") || src.contains("youtu.be")) {
                     continue
                 }
 
@@ -216,7 +224,7 @@ class JetFilmIzle : MainAPI() {
                 if (fixedUrl.contains("hotstream.club") || fixedUrl.contains("hupload.pics") || fixedUrl.contains("/embed/")) {
                     try {
                         val iframeResponse = app.get(fixedUrl, referer = pageUrl, interceptor = interceptor)
-                        val bePlayerRegex = Regex("""bePlayer\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"](\{.+?\})['"]\s*\)""")
+                        val bePlayerRegex = Regex("""bePlayer\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"](\{.+?\})['"]\s*\)""", RegexOption.DOT_MATCHES_ALL)
                         val match = bePlayerRegex.find(iframeResponse.text)
 
                         if (match != null) {
@@ -238,19 +246,52 @@ class JetFilmIzle : MainAPI() {
 
                                     val m3u8Resp = app.get(videoLocation, headers = m3u8Headers, referer = fixedUrl)
                                     if (m3u8Resp.text.contains("#EXTM3U")) {
-                                        callback(
-                                            newExtractorLink(
-                                                source = "JetFilm",
-                                                name = "JetFilm ($langLabel)",
-                                                url = videoLocation,
-                                                type = ExtractorLinkType.M3U8
-                                            ) {
-                                                this.referer = fixedUrl
-                                                this.headers = m3u8Headers
-                                                this.quality = Qualities.P1080.value
+                                        val m3u8Lines = m3u8Resp.text.lines()
+                                        var directLinkFound = false
+
+                                        for (i in m3u8Lines.indices) {
+                                            val line = m3u8Lines[i].trim()
+                                            if (line.startsWith("#EXT-X-STREAM-INF")) {
+                                                val nextLine = m3u8Lines.getOrNull(i + 1)?.trim()
+                                                if (nextLine != null && nextLine.startsWith("http")) {
+                                                    val quality = if (line.contains("FULLHD") || line.contains("1080")) Qualities.P1080.value
+                                                                  else if (line.contains("720")) Qualities.P720.value
+                                                                  else if (line.contains("480")) Qualities.P480.value
+                                                                  else Qualities.Unknown.value
+
+                                                    callback(
+                                                        newExtractorLink(
+                                                            source = "JetFilm",
+                                                            name = "JetFilm ($langLabel)",
+                                                            url = nextLine,
+                                                            type = ExtractorLinkType.M3U8
+                                                        ) {
+                                                            this.referer = fixedUrl
+                                                            this.headers = m3u8Headers
+                                                            this.quality = quality
+                                                        }
+                                                    )
+                                                    directLinkFound = true
+                                                    foundAny = true
+                                                }
                                             }
-                                        )
-                                        foundAny = true
+                                        }
+
+                                        if (!directLinkFound) {
+                                            callback(
+                                                newExtractorLink(
+                                                    source = "JetFilm",
+                                                    name = "JetFilm ($langLabel)",
+                                                    url = videoLocation,
+                                                    type = ExtractorLinkType.M3U8
+                                                ) {
+                                                    this.referer = fixedUrl
+                                                    this.headers = m3u8Headers
+                                                    this.quality = Qualities.P1080.value
+                                                }
+                                            )
+                                            foundAny = true
+                                        }
                                     }
                                 }
                             }
@@ -258,11 +299,11 @@ class JetFilmIzle : MainAPI() {
                     } catch (e: Exception) {
                         Log.e("JetFilm", "bePlayer ayrıştırma hatası: ${e.message}")
                     }
+                } else {
+                    // Standart CloudStream extractor'larına ilet (Vidmoly, Streamtape vb.)
+                    loadExtractor(fixedUrl, pageUrl, subtitleCallback, callback)
+                    foundAny = true
                 }
-
-                // Standart CloudStream extractor'larına ilet (Vidmoly, Streamtape vb.)
-                loadExtractor(fixedUrl, pageUrl, subtitleCallback, callback)
-                foundAny = true
             }
         }
 
@@ -273,7 +314,8 @@ class JetFilmIzle : MainAPI() {
         try {
             val salt = hexToBytes(payload.s)
             val iv = hexToBytes(payload.iv)
-            val ct = Base64.decode(payload.ct, Base64.DEFAULT)
+            val cleanCt = payload.ct.replace("\\/", "/").trim()
+            val ct = Base64.decode(cleanCt, Base64.DEFAULT)
 
             val passCandidates = listOf(
                 passB64.toByteArray(Charsets.UTF_8),
