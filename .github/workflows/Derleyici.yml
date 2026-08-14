@@ -78,11 +78,26 @@ jobs:
                   with open(f, "rb") as fp:
                       sha = hashlib.sha256(fp.read()).hexdigest()
                   
+                  # Extract version from build.gradle.kts
+                  version = 1
+                  gradle_file = os.path.join(os.getenv("GITHUB_WORKSPACE", ""), "src", name, "build.gradle.kts")
+                  if os.path.exists(gradle_file):
+                      try:
+                          with open(gradle_file, "r", encoding="utf-8") as gf:
+                              for line in gf:
+                                  if "version" in line and "=" in line:
+                                      version = int(line.split("=")[1].strip())
+                                      break
+                      except Exception:
+                          version = plugin_data.get("version", 1)
+                  else:
+                      version = plugin_data.get("version", 1)
+
                   plugin_data = existing_plugins.get(name, {})
                   plugin_data.update({
                       "url": f"https://raw.githubusercontent.com/{repo_name}/builds/{f}",
                       "status": plugin_data.get("status", 1),
-                      "version": plugin_data.get("version", 10 if name == "HDFilmCehennemi" else 1),
+                      "version": version,
                       "name": name,
                       "internalName": name,
                       "authors": plugin_data.get("authors", ["ozdek"]),
