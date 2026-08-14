@@ -33,5 +33,149 @@
         "language": "tr",
         "apiVersion": 1,
         "fileHash": "sha256-281121b418cb3fc4137c57fc3878454ecc3bb4fa8109eec1e09abf70d93cbd1b"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/CizgiveDizi.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "CizgiveDizi",
+        "internalName": "CizgiveDizi",
+        "authors": [
+            "ozdek"
+        ],
+        "description": "CizgiveDizi CloudStream eklentisi",
+        "fileSize": 33512,
+        "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
+        "language": "tr",
+        "apiVersion": 1,
+        "fileHash": "sha256-d6ea99477640f4eff2bf26e429f9635871764f6e967e5ec47a5ed3edf809209e"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/DMax.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "DMax",
+        "internalName": "DMax",
+        "authors": [
+            "ozdek"
+        ],
+        "description": "DMax CloudStream eklentisi",
+        "fileSize": 13243,
+        "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
+        "language": "tr",
+        "apiVersion": 1,
+        "fileHash": "sha256-ca90407c3bd21203a0b665e1a0fb5c517be63f0609c257005198bc5d4c0d10ce"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/DiziAsia.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "DiziAsia",
+        "internalName": "DiziAsia",
+        "authors": [
+            "ozdek"
+        ],
+        "description": "DiziAsia CloudStream eklentisi",
+        "fileSize": 16143,
+        "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
+        "language": "tr",
+        "apiVersion": 1,
+        "fileHash": "sha256-90bfcdfe8b008d67693aff7ab6382d7257deb16fa32d3ce7f340e456b32e83ff"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/Dizican.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Dizican",
+        "internalName": "Dizican",
+        "authors": [
+            "ozdek"
+        ],
+        "description": "Dizican CloudStream eklentisi",
+        "fileSize": 15289,
+        "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
+        "language": "tr",
+        "apiVersion": 1,
+        "fileHash": "sha256-8b5ed1875fe9419ec163be0f5d7926814e6e1fc224b5cbc786bec5b35c072de9"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/FilmBip.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "FilmBip",
+        "internalName": "FilmBip",
+        "authors": [
+            "ozdek"
+        ],
+        "description": "FilmBip CloudStream eklentisi",
+        "fileSize": 14344,
+        "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
+        "language": "tr",
+        "apiVersion": 1,
+        "fileHash": "sha256-037ff167f0bfe85921cf2e64b66c72126355f8f912252056d9f4e5ace01a06dd"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/KickTR.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "KickTR",
+        "internalName": "KickTR",
+        "authors": [
+            "ozdek"
+        ],
+        "description": "KickTR CloudStream eklentisi",
+        "fileSize": 25787,
+        "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
+        "language": "tr",
+        "apiVersion": 1,
+        "fileHash": "sha256-688a40537a15c2faad1350db9460e4174e5ff17607cc453118a4a0d9eed64689"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/SeiCode.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "SeiCode",
+        "internalName": "SeiCode",
+        "authors": [
+            "ozdek"
+        ],
+        "description": "SeiCode CloudStream eklentisi",
+        "fileSize": 19842,
+        "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
+        "language": "tr",
+        "apiVersion": 1,
+        "fileHash": "sha256-c6b47c61bf7cadec803c1c73f97bb3bf806fcc85833462a8136a7a31fc2d5e61"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/TLC.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "TLC",
+        "internalName": "TLC",
+        "authors": [
+            "ozdek"
+        ],
+        "description": "TLC CloudStream eklentisi",
+        "fileSize": 13153,
+        "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
+        "language": "tr",
+        "apiVersion": 1,
+        "fileHash": "sha256-bbe8250c99b25e87d1856932470e7136bcd2ed0ded370f5b59de8d601d88e230"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/YeniWatch.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "YeniWatch",
+        "internalName": "YeniWatch",
+        "authors": [
+            "ozdek"
+        ],
+        "description": "YeniWatch CloudStream eklentisi",
+        "fileSize": 15428,
+        "repositoryUrl": "https://github.com/ozdek/TurkMegaRepo",
+        "language": "tr",
+        "apiVersion": 1,
+        "fileHash": "sha256-a6eed5bdbd3cb0244cc9b1a2a00558094a9beb0a18b523f56916504358e320a4"
     }
 ]
