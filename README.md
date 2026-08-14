@@ -1,3 +1,13 @@
-~Tıkla~ Gorile Tıklayarak Repoyu İndirebilirsiniz:
+# TurkMegaRepo - CloudStream Türkçe Eklenti Havuzu
 
-[<img alt="alt_text" width="200px" src="https://raw.githubusercontent.com/kerimmkirac/cs-kerim/refs/heads/master/logo.png"/>](https://kerimmkirac.github.io/http-protocol-redirector/?r=cloudstreamrepo://raw.githubusercontent.com/kerimmkirac/cs-kerim/refs/heads/master/repo.json)
+### 📱 CloudStream'e Nasıl Eklenir?
+
+1. **CloudStream** uygulamasını açın.
+2. **Ayarlar (Settings)** &rarr; **Uzantılar (Extensions)** &rarr; **Depolar (Repositories)** bölümüne gidin.
+3. **Depo Ekle (Add Repository)** butonuna tıklayın.
+4. **Depo Adı:** `TurkMegaRepo`
+5. **Depo URL:** 
+   ```text
+   https://raw.githubusercontent.com/ozdek/TurkMegaRepo/builds/repo.json
+   ```
+6. Depoyu ekledikten sonra **Uzantılar** listesinden `HDFilmCehennemi` ve diğer dilediğiniz eklentileri tek tıkla yükleyebilirsiniz.
