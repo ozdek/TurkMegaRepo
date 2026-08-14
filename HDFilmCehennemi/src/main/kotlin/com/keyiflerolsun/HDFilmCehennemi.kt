@@ -44,73 +44,39 @@ class HDFilmCehennemi : MainAPI() {
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     )
 
-    // Ana sayfa kategorilerini tanımlıyoruz
+    // Ana sayfa kategorilerini doğrudan sitenin gerçek linkleriyle tanımlıyoruz
     override val mainPage = mainPageOf(
-        "${mainUrl}/load/page/1/home/"                                    to "Yeni Eklenen Filmler",
-        "${mainUrl}/load/page/1/categories/nette-ilk-filmler/"            to "Nette İlk Filmler",
-        "${mainUrl}/load/page/1/home-series/"                             to "Yeni Eklenen Diziler",
-        "${mainUrl}/load/page/1/categories/tavsiye-filmler-izle2/"        to "Tavsiye Filmler",
-        "${mainUrl}/load/page/1/mostLiked/"                               to "En Çok Beğenilenler",
-        "${mainUrl}/load/page/1/mostCommented/"                           to "En Çok Yorumlananlar",
-        "${mainUrl}/load/page/1/imdb7/"                                   to "IMDB 7+ Filmler",
-        "${mainUrl}/load/page/1/genres/aile-filmleri-izleyin-6/"          to "Aile Filmleri",
-        "${mainUrl}/load/page/1/genres/aksiyon-filmleri-izleyin-5/"       to "Aksiyon Filmleri",
-        "${mainUrl}/load/page/1/genres/animasyon-filmlerini-izleyin-5/"   to "Animasyon Filmleri",
-        "${mainUrl}/load/page/1/genres/belgesel-filmlerini-izle-1/"       to "Belgesel Filmleri",
-        "${mainUrl}/load/page/1/genres/bilim-kurgu-filmlerini-izleyin-3/" to "Bilim Kurgu Filmleri",
-        "${mainUrl}/load/page/1/genres/komedi-filmlerini-izleyin-1/"      to "Komedi Filmleri",
-        "${mainUrl}/load/page/1/genres/korku-filmlerini-izle-4/"          to "Korku Filmleri",
-        "${mainUrl}/load/page/1/genres/romantik-filmleri-izle-2/"         to "Romantik Filmleri"
+        "${mainUrl}/"                                                     to "Yeni Eklenen Filmler",
+        "${mainUrl}/category/tavsiye-filmler-izle2/"                     to "Tavsiye Filmler",
+        "${mainUrl}/imdb-7-puan-uzeri-filmler-2/"                         to "IMDB 7+ Filmler",
+        "${mainUrl}/en-cok-yorumlananlar-2/"                              to "En Çok Yorumlananlar",
+        "${mainUrl}/en-cok-begenilen-filmleri-izle-4/"                    to "En Çok Beğenilenler",
+        "${mainUrl}/yabancidiziizle-5/"                                   to "Yeni Eklenen Diziler",
+        "${mainUrl}/category/film-izle-2/"                                to "Tüm Filmler",
+        "${mainUrl}/tur/aile-filmleri-izleyin-6/"                         to "Aile",
+        "${mainUrl}/tur/aksiyon-filmleri-izleyin-5/"                      to "Aksiyon",
+        "${mainUrl}/tur/animasyon-filmlerini-izleyin-5/"                  to "Animasyon",
+        "${mainUrl}/tur/belgesel-filmlerini-izle-1/"                      to "Belgesel",
+        "${mainUrl}/tur/bilim-kurgu-filmlerini-izleyin-3/"                to "Bilim Kurgu",
+        "${mainUrl}/tur/komedi-filmlerini-izleyin-1/"                     to "Komedi",
+        "${mainUrl}/tur/korku-filmlerini-izle-4/"                         to "Korku",
+        "${mainUrl}/tur/romantik-filmleri-izle-2/"                        to "Romantik"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // URL'deki sayfa numarasını güncelle
-        val url = if (page == 1) {
-            request.data
-                .replace("/load/page/1/home-series/", "/dizi-izle/")
-                .replace("/load/page/1/home/", "/")
-                .replace("/load/page/1/genres/", "/tur/")
-                .replace("/load/page/1/categories/", "/category/")
-                .replace("/load/page/1/imdb7/", "/imdb-7-puan-uzeri-filmler/")
-                .replace("/load/page/1/mostLiked/", "/en-cok-begenilen-filmleri-izle-4/")
-                .replace("/load/page/1/mostCommented/", "/en-cok-yorumlananlar-2/")
-        } else {
-            request.data.replace("/page/1/", "/page/${page}/")
-        }
+        val base = request.data.trimEnd('/')
+        val url = if (page == 1) "$base/" else "$base/page/$page/"
 
-        // API isteği gönder
-        val response = app.get(url, headers = standardHeaders, referer = mainUrl, interceptor = interceptor)
+        val document = app.get(url, headers = standardHeaders, referer = mainUrl, interceptor = interceptor).document
+        val elements = document.select("a.poster, div.slider-slide a, div.posters-4-col a, div.section-content a.story")
+        val results = elements.mapNotNull { it.toSearchResult() }.distinctBy { it.url }
 
-        // Yanıt başarılı değilse boş liste döndür
-        if (response.text.contains("Sayfa Bulunamadı")) {
-            Log.d("HDCH", "Sayfa bulunamadı: $url")
-            return newHomePageResponse(request.name, emptyList())
-        }
-
-        try {
-            // Hem AJAX JSON ({ "html": "..." }) hem de düz HTML yanıtlarını destekle
-            val document = if (response.text.trim().startsWith("{")) {
-                val hdfc: HDFC = objectMapper.readValue(response.text)
-                Jsoup.parse(hdfc.html)
-            } else {
-                response.document
-            }
-
-            // Film/dizi kartlarını SearchResponse listesine dönüştür
-            val elements = document.select("div.poster, div.film-card, div.movie-card, div.section-content a, div.content a, a")
-            val results = elements.mapNotNull { it.toSearchResult() }.distinctBy { it.url }
-
-            Log.d("HDCH", "Kategori ${request.name} için ${results.size} sonuç bulundu")
-
-            return newHomePageResponse(request.name, results)
-        } catch (e: Exception) {
-            Log.e("HDCH", "Parse hatası (${request.name}): ${e.message}")
-            return newHomePageResponse(request.name, emptyList())
-        }
+        Log.d("HDCH", "Kategori ${request.name} için ${results.size} sonuç bulundu ($url)")
+        return newHomePageResponse(request.name, results)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val title = this.selectFirst(".title, .poster-title, h4, h3, h2")?.text()?.trim()
+        val title = this.selectFirst("strong.poster-title, h3.story-title, .poster-title, .title, h4, h3, h2")?.text()?.trim()
             ?: this.attr("title").trim().takeIf { it.isNotEmpty() }
             ?: return null
 
@@ -122,22 +88,24 @@ class HDFilmCehennemi : MainAPI() {
             title.contains("DC Yapımları", ignoreCase = true) ||
             title.contains("Marvel Yapımları", ignoreCase = true) ||
             title.contains("Amazon Yapımları", ignoreCase = true) ||
-            title.contains("1080p Film izle", ignoreCase = true)) {
+            title.contains("1080p Film izle", ignoreCase = true) ||
+            title.contains("Tüm Fragmanlar", ignoreCase = true)) {
             return null
         }
 
-        val href = fixUrlNull(this.selectFirst("a")?.attr("href"))
-            ?: fixUrlNull(this.attr("href"))
+        val href = fixUrlNull(this.attr("href"))
+            ?: fixUrlNull(this.selectFirst("a")?.attr("href"))
             ?: return null
 
-        if (href == mainUrl || href == "$mainUrl/" || href.contains("/tur/") || href.contains("/category/") || href.contains("/load/")) {
+        if (href == mainUrl || href == "$mainUrl/" || href.contains("/category/") || href.contains("/tur/") || href.contains("/yil/")) {
             return null
         }
 
+        // data-src gerçek resim URL'sini içerir (src bazen base64 placeholder olur)
         val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("data-src"))
-            ?: fixUrlNull(this.selectFirst("img")?.attr("src"))
+            ?: fixUrlNull(this.selectFirst("img")?.attr("src")?.takeUnless { it.startsWith("data:") })
 
-        val cleanTitle = title.substringBefore(" izle").trim()
+        val cleanTitle = title.replace(" izle", "").trim()
 
         return newMovieSearchResponse(cleanTitle, href, TvType.Movie) {
             this.posterUrl = posterUrl
@@ -161,8 +129,8 @@ class HDFilmCehennemi : MainAPI() {
                     val document = Jsoup.parse(resultHtml)
                     val title = document.selectFirst("h4.title, .title, a")?.text()?.trim() ?: return@forEach
                     val href = fixUrlNull(document.selectFirst("a")?.attr("href")) ?: return@forEach
-                    val posterUrl = fixUrlNull(document.selectFirst("img")?.attr("src"))
-                        ?: fixUrlNull(document.selectFirst("img")?.attr("data-src"))
+                    val posterUrl = fixUrlNull(document.selectFirst("img")?.attr("data-src"))
+                        ?: fixUrlNull(document.selectFirst("img")?.attr("src")?.takeUnless { it.startsWith("data:") })
 
                     searchResults.add(
                         newMovieSearchResponse(title.replace(" izle", "").trim(), href, TvType.Movie) {
@@ -172,7 +140,7 @@ class HDFilmCehennemi : MainAPI() {
                 }
             } else {
                 val document = response.document
-                val items = document.select("div.poster, div.movie-card, div.section-content a, div.content a, a.poster")
+                val items = document.select("a.poster, div.poster a, div.posters-4-col a, a")
                 items.mapNotNull { it.toSearchResult() }.forEach { searchResults.add(it) }
             }
         } catch (e: Exception) {
@@ -184,35 +152,34 @@ class HDFilmCehennemi : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url, headers = standardHeaders, referer = mainUrl, interceptor = interceptor).document
 
+        val title = document.selectFirst("h1.section-title, h1.title, h1, [property='og:title']")?.let { 
+            if (it.hasAttr("content")) it.attr("content") else it.text() 
+        }?.substringBefore(" izle")?.trim() ?: return null
 
+        val poster = fixUrlNull(document.selectFirst("aside.post-info-poster img, [property='og:image']")?.let {
+            if (it.hasAttr("content")) it.attr("content") else (it.attr("data-src").ifEmpty { it.attr("src") })
+        })
 
-        val title       = document.selectFirst("h1.section-title")?.text()?.substringBefore(" izle") ?: return null
-        val poster      = fixUrlNull(document.select("aside.post-info-poster img.lazyload").lastOrNull()?.attr("data-src"))
-        val tags        = document.select("div.post-info-genres a").map { it.text() }
-        val year        = document.selectFirst("div.post-info-year-country a")?.text()?.trim()?.toIntOrNull()
-        val tvType      = if (document.select("div.seasons").isEmpty()) TvType.Movie else TvType.TvSeries
-        val description = document.selectFirst("article.post-info-content > p")?.text()?.trim()
-        val rating      = document.selectFirst("div.post-info-imdb-rating span")?.text()?.substringBefore("(")?.trim()?.toDoubleOrNull()
-        val actors      = document.select("div.post-info-cast a").map {
-            Actor(it.selectFirst("strong")!!.text(), it.select("img").attr("data-src"))
+        val tags        = document.select("div.post-info-genres a, div.genres a").map { it.text() }
+        val year        = document.selectFirst("div.post-info-year-country a, span.year")?.text()?.trim()?.toIntOrNull()
+        val tvType      = if (document.select("div.seasons, div.seasons-tab-content").isEmpty()) TvType.Movie else TvType.TvSeries
+        val description = document.selectFirst("article.post-info-content > p, article.content p, p.description")?.text()?.trim()
+        val rating      = document.selectFirst("div.post-info-imdb-rating span, span.imdb")?.text()?.replace(",", ".")?.substringBefore("(")?.trim()?.toDoubleOrNull()
+        val actors      = document.select("div.post-info-cast a, div.cast a").mapNotNull {
+            val actorName = it.selectFirst("strong, span")?.text()?.trim() ?: return@mapNotNull null
+            val actorImg = fixUrlNull(it.selectFirst("img")?.attr("data-src") ?: it.selectFirst("img")?.attr("src"))
+            Actor(actorName, actorImg)
         }
 
-        val recommendations = document.select("div.section-slider-container div.slider-slide").mapNotNull {
-            val recName      = it.selectFirst("a")?.attr("title") ?: return@mapNotNull null
-            val recHref      = fixUrlNull(it.selectFirst("a")?.attr("href")) ?: return@mapNotNull null
-            val recPosterUrl = fixUrlNull(it.selectFirst("img")?.attr("data-src")) ?:
-            fixUrlNull(it.selectFirst("img")?.attr("src"))
-
-            newTvSeriesSearchResponse(recName, recHref, TvType.TvSeries) {
-                this.posterUrl = recPosterUrl
-            }
+        val recommendations = document.select("div.section-slider-container div.slider-slide a, a.poster").mapNotNull {
+            it.toSearchResult()
         }
 
         return if (tvType == TvType.TvSeries) {
-            val trailer  = document.selectFirst("div.post-info-trailer button")?.attr("data-modal")
+            val trailer  = document.selectFirst("div.post-info-trailer button, button[data-modal*='trailer']")?.attr("data-modal")
                 ?.substringAfter("trailer/")?.let { "https://www.youtube.com/embed/$it" }
             val episodes = document.select("div.seasons-tab-content a").mapNotNull {
-                val epName    = it.selectFirst("h4")?.text()?.trim() ?: return@mapNotNull null
+                val epName    = it.selectFirst("h4, span")?.text()?.trim() ?: return@mapNotNull null
                 val epHref    = fixUrlNull(it.attr("href")) ?: return@mapNotNull null
                 val epEpisode = Regex("""(\d+)\. ?Bölüm""").find(epName)?.groupValues?.get(1)?.toIntOrNull()
                 val epSeason  = Regex("""(\d+)\. ?Sezon""").find(epName)?.groupValues?.get(1)?.toIntOrNull() ?: 1
@@ -235,7 +202,7 @@ class HDFilmCehennemi : MainAPI() {
                 addTrailer(trailer)
             }
         } else {
-            val trailer = document.selectFirst("div.post-info-trailer button")?.attr("data-modal")
+            val trailer = document.selectFirst("div.post-info-trailer button, button[data-modal*='trailer']")?.attr("data-modal")
                 ?.substringAfter("trailer/")?.let { "https://www.youtube.com/embed/$it" }
 
             newMovieLoadResponse(title, url, TvType.Movie, url) {
