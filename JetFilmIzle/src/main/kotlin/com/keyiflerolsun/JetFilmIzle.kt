@@ -176,10 +176,17 @@ class JetFilmIzle : MainAPI() {
         @JsonProperty("s")  val s: String
     )
 
+    private data class SubtitleItem(
+        @JsonProperty("file")     val file: String?,
+        @JsonProperty("label")    val label: String?,
+        @JsonProperty("language") val language: String?
+    )
+
     private data class DecryptedVideo(
         @JsonProperty("video_location") val videoLocation: String?,
         @JsonProperty("title")          val title: String?,
-        @JsonProperty("referer")        val referer: String?
+        @JsonProperty("referer")        val referer: String?,
+        @JsonProperty("strSubtitles")   val strSubtitles: List<SubtitleItem>?
     )
 
     override suspend fun loadLinks(
@@ -204,11 +211,11 @@ class JetFilmIzle : MainAPI() {
             val pageDoc = if (pageUrl == data) document else app.get(pageUrl, headers = standardHeaders, referer = mainUrl, interceptor = interceptor).document
             val langLabel = if (pageUrl.endsWith("/2/") || pageUrl.contains("altyazi")) "Türkçe Altyazılı" else "Türkçe Dublaj"
 
-            val iframes = pageDoc.select("div.filmalani iframe, div.video-container iframe, div.video iframe, iframe")
-            for (iframe in iframes) {
-                val src = iframe.attr("data-litespeed-src").ifEmpty {
-                    iframe.attr("data-src").ifEmpty {
-                        iframe.attr("src")
+            val elements = pageDoc.select("div.filmalani iframe, div.video-container iframe, div.video iframe, iframe, video source, video")
+            for (element in elements) {
+                val src = element.attr("data-litespeed-src").ifEmpty {
+                    element.attr("data-src").ifEmpty {
+                        element.attr("src")
                     }
                 }
 
@@ -239,14 +246,63 @@ class JetFilmIzle : MainAPI() {
                                 val videoObj: DecryptedVideo = objectMapper.readValue(decryptedJson)
                                 val videoLocation = videoObj.videoLocation
 
+                                // Altyazıları ilet
+                                videoObj.strSubtitles?.forEach { sub ->
+                                    if (!sub.file.isNullOrBlank()) {
+                                        val subUrl = fixUrl(sub.file)
+                                        subtitleCallback(
+                                            SubtitleFile(
+                                                lang = sub.label ?: "Turkish",
+                                                url = subUrl
+                                            )
+                                        )
+                                    }
+                                }
+
                                 if (!videoLocation.isNullOrBlank()) {
                                     val fullVideoLocation = fixUrl(videoLocation)
                                     val m3u8Headers = mapOf(
-                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
                                         "Referer" to fixedUrl,
                                         "X-Requested-With" to "XMLHttpRequest"
                                     )
 
+                                    // Master M3U8 listesini anlık çekerek tekil akış URL'lerini de ekleyelim
+                                    try {
+                                        val m3u8Resp = app.get(fullVideoLocation, headers = m3u8Headers, referer = fixedUrl, interceptor = interceptor)
+                                        val m3u8Text = m3u8Resp.text
+                                        if (m3u8Text.contains("#EXTM3U")) {
+                                            val lines = m3u8Text.lines()
+                                            for (i in lines.indices) {
+                                                val line = lines[i].trim()
+                                                if (line.startsWith("#EXT-X-STREAM-INF")) {
+                                                    val nextLine = lines.getOrNull(i + 1)?.trim()
+                                                    if (nextLine != null && nextLine.startsWith("http")) {
+                                                        val quality = if (line.contains("FULLHD") || line.contains("1080")) Qualities.P1080.value
+                                                                      else if (line.contains("720")) Qualities.P720.value
+                                                                      else if (line.contains("480")) Qualities.P480.value
+                                                                      else Qualities.Unknown.value
+
+                                                        callback(
+                                                            newExtractorLink(
+                                                                source = "JetFilm",
+                                                                name = "JetFilm ($langLabel)",
+                                                                url = nextLine,
+                                                                type = ExtractorLinkType.M3U8
+                                                            ) {
+                                                                this.referer = fixedUrl
+                                                                this.headers = m3u8Headers
+                                                                this.quality = quality
+                                                            }
+                                                        )
+                                                        foundAny = true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (_: Exception) {}
+
+                                    // Ana m3u8 akışını doğrudan da ekleyelim
                                     callback(
                                         newExtractorLink(
                                             source = "JetFilm",
@@ -266,11 +322,11 @@ class JetFilmIzle : MainAPI() {
                     } catch (e: Exception) {
                         Log.e("JetFilm", "bePlayer ayrıştırma hatası: ${e.message}")
                     }
-                } else {
-                    // Standart CloudStream extractor'larına ilet (Vidmoly, Streamtape vb.)
-                    loadExtractor(fixedUrl, pageUrl, subtitleCallback, callback)
-                    foundAny = true
                 }
+
+                // Standart CloudStream extractor'larına da ilet (Vidmoly, Streamtape vb.)
+                loadExtractor(fixedUrl, pageUrl, subtitleCallback, callback)
+                foundAny = true
             }
         }
 
@@ -282,7 +338,11 @@ class JetFilmIzle : MainAPI() {
             val salt = hexToBytes(payload.s)
             val jsonIv = hexToBytes(payload.iv)
             val cleanCt = payload.ct.replace("\\/", "/").trim()
-            val ct = Base64.decode(cleanCt, Base64.DEFAULT)
+            val ct = try {
+                Base64.decode(cleanCt, Base64.DEFAULT)
+            } catch (_: Exception) {
+                Base64.decode(cleanCt, Base64.NO_WRAP)
+            }
 
             val passCandidates = listOf(
                 passB64.toByteArray(Charsets.UTF_8),
