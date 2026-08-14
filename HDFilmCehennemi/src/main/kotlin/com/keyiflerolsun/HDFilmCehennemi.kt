@@ -30,8 +30,27 @@ class HDFilmCehennemi : MainAPI() {
     override var sequentialMainPageDelay       = 50L  // ? 0.05 saniye
     override var sequentialMainPageScrollDelay = 50L  // ? 0.05 saniye
 
-    // ! CloudFlare Killer Interceptor
-    private val interceptor by lazy { CloudflareKiller() }
+    // ! CloudFlare v2
+    private val cloudflareKiller by lazy { CloudflareKiller() }
+    private val interceptor      by lazy { CloudflareInterceptor(cloudflareKiller) }
+
+    class CloudflareInterceptor(private val cloudflareKiller: CloudflareKiller): Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val request  = chain.request()
+            val response = chain.proceed(request)
+            if (response.code in listOf(403, 503)) {
+                response.close()
+                return cloudflareKiller.intercept(chain)
+            }
+            val bodyString = response.peekBody(1024 * 1024).string()
+            if (bodyString.contains("Just a moment") || bodyString.contains("Güvenlik taraması") || bodyString.contains("challenges.cloudflare.com")) {
+                response.close()
+                return cloudflareKiller.intercept(chain)
+            }
+
+            return response
+        }
+    }
 
     // ObjectMapper for JSON parsing
     private val objectMapper = ObjectMapper().apply {
