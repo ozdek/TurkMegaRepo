@@ -186,6 +186,7 @@ class JetFilmIzle : MainAPI() {
         @JsonProperty("video_location") val videoLocation: String?,
         @JsonProperty("title")          val title: String?,
         @JsonProperty("referer")        val referer: String?,
+        @JsonProperty("dwlink")         val dwlink: String?,
         @JsonProperty("strSubtitles")   val strSubtitles: List<SubtitleItem>?
     )
 
@@ -251,7 +252,7 @@ class JetFilmIzle : MainAPI() {
                                     if (!sub.file.isNullOrBlank()) {
                                         val subUrl = fixUrl(sub.file)
                                         subtitleCallback(
-                                            SubtitleFile(
+                                            newSubtitleFile(
                                                 lang = sub.label ?: "Turkish",
                                                 url = subUrl
                                             )
@@ -261,15 +262,19 @@ class JetFilmIzle : MainAPI() {
 
                                 if (!videoLocation.isNullOrBlank()) {
                                     val fullVideoLocation = fixUrl(videoLocation)
-                                    val m3u8Headers = mapOf(
-                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-                                        "Referer" to fixedUrl,
-                                        "X-Requested-With" to "XMLHttpRequest"
-                                    )
 
-                                    // Master M3U8 listesini anlık çekerek tekil akış URL'lerini de ekleyelim
+                                    // Master M3U8 listesini anlık çekerek tekil akış URL'lerini ekleyelim
                                     try {
-                                        val m3u8Resp = app.get(fullVideoLocation, headers = m3u8Headers, referer = fixedUrl, interceptor = interceptor)
+                                        val m3u8Resp = app.get(
+                                            fullVideoLocation,
+                                            headers = mapOf(
+                                                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                                "Referer" to fixedUrl,
+                                                "X-Requested-With" to "XMLHttpRequest"
+                                            ),
+                                            referer = fixedUrl,
+                                            interceptor = interceptor
+                                        )
                                         val m3u8Text = m3u8Resp.text
                                         if (m3u8Text.contains("#EXTM3U")) {
                                             val lines = m3u8Text.lines()
@@ -291,7 +296,6 @@ class JetFilmIzle : MainAPI() {
                                                                 type = ExtractorLinkType.M3U8
                                                             ) {
                                                                 this.referer = fixedUrl
-                                                                this.headers = m3u8Headers
                                                                 this.quality = quality
                                                             }
                                                         )
@@ -306,12 +310,27 @@ class JetFilmIzle : MainAPI() {
                                     callback(
                                         newExtractorLink(
                                             source = "JetFilm",
-                                            name = "JetFilm ($langLabel)",
+                                            name = "JetFilm ($langLabel - Master)",
                                             url = fullVideoLocation,
                                             type = ExtractorLinkType.M3U8
                                         ) {
                                             this.referer = fixedUrl
-                                            this.headers = m3u8Headers
+                                            this.quality = Qualities.P1080.value
+                                        }
+                                    )
+                                    foundAny = true
+                                }
+
+                                if (!videoObj.dwlink.isNullOrBlank()) {
+                                    val fullDw = fixUrl(videoObj.dwlink)
+                                    callback(
+                                        newExtractorLink(
+                                            source = "JetFilm",
+                                            name = "JetFilm ($langLabel - Direct)",
+                                            url = fullDw,
+                                            type = ExtractorLinkType.VIDEO
+                                        ) {
+                                            this.referer = fixedUrl
                                             this.quality = Qualities.P1080.value
                                         }
                                     )
