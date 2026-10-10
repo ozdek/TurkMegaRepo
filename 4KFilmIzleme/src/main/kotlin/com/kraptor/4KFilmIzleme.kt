@@ -12,7 +12,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import okio.ByteString.Companion.decodeBase64
 
 class `4KFilmIzleme` : MainAPI() {
-    override var mainUrl = "https://www.4kfilmizleme.net"
+    override var mainUrl = "http://ww547.4kfilmizleme.net/?tkn=19vnMT3S"
     override var name = "4KFilmIzleme"
     override val hasMainPage = true
     override var lang = "tr"
